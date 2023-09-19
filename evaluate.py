@@ -16,71 +16,77 @@ dataset_name = "CIFAR10"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
-all_accuracy = []
-all_auroc = []
 
-for trial in range(start_trial, start_trial + num_trials):
-    with open("./datasets/config.json") as f:
-        config = json.load(f)[dataset_name]
+def test():
+    all_accuracy = []
+    all_auroc = []
+    for trial in range(start_trial, start_trial + num_trials):
+        with open("./datasets/config.json") as f:
+            config = json.load(f)[dataset_name]
 
-    known_loader, unknown_loader, mapping = get_eval_loaders(
-        dataset_name, trial, config
-    )
-    net = VGG("VGG19", n_classes=4)
-    checkpoint = torch.load(
-        f"checkpoint/{dataset_name}/{trial}_ckpt.pth", map_location=torch.device(device)
-    )
-    # map_location = torch.device("cpu")
+        known_loader, unknown_loader, mapping = get_eval_loaders(
+            dataset_name, trial, config
+        )
+        net = VGG("VGG19", n_classes=4)
+        checkpoint = torch.load(
+            f"checkpoint/{dataset_name}/{trial}_ckpt.pth",
+            map_location=torch.device(device),
+        )
+        # map_location = torch.device("cpu")
 
-    net = net.to(device)
-    print("test")
+        net = net.to(device)
+        print("test")
 
-    net_dict = net.state_dict()
-    pretrained_dict = {k: v for k, v in checkpoint["net"].items() if k in net_dict}
+        net_dict = net.state_dict()
+        pretrained_dict = {k: v for k, v in checkpoint["net"].items() if k in net_dict}
 
-    net.load_state_dict(pretrained_dict)
-    net.eval()
+        net.load_state_dict(pretrained_dict)
+        net.eval()
 
-    X = []
-    y = []
+        X = []
+        y = []
 
-    softmax = torch.nn.Softmax(dim=1)
-    with torch.no_grad():
-        for i, data in enumerate(known_loader):
-            images, labels = data
-            targets = torch.Tensor([mapping[x] for x in labels]).long().to(device)
+        softmax = torch.nn.Softmax(dim=1)
+        with torch.no_grad():
+            for i, data in enumerate(known_loader):
+                images, labels = data
+                targets = torch.Tensor([mapping[x] for x in labels]).long().to(device)
 
-            images = images.to(device)
-            logits = net(images)
-            scores = softmax(logits)
+                images = images.to(device)
+                logits = net(images)
+                scores = softmax(logits)
 
-            X += scores
-            y += targets
+                X += scores.cpu().detach().tolist()
+                y += targets.cpu().tolist()
 
-        X = np.asarray(X)
-        y = np.asarray(y)
+            X = np.asarray(X)
+            y = np.asarray(y)
 
-        accuracy = get_accuracy(X, y)
-        all_accuracy += [accuracy]
+            accuracy = get_accuracy(X, y)
+            all_accuracy += [accuracy]
 
-    Xu = []
-    with torch.no_grad():
-        for i, data in enumerate(unknown_loader):
-            images, labels = data
+        Xu = []
+        with torch.no_grad():
+            for i, data in enumerate(unknown_loader):
+                images, labels = data
 
-            images = images.to(device)
-            logits = net(images)
-            scores = softmax(logits)
-            Xu += scores
-        Xu = np.asarray(Xu)
+                images = images.to(device)
+                logits = net(images)
+                scores = softmax(logits)
+                Xu += scores.cpu().detach().tolist()
+            Xu = np.asarray(Xu)
 
-        auroc = get_auroc(X, Xu)
-        all_auroc += [auroc]
+            auroc = get_auroc(X, Xu)
+            all_auroc += [auroc]
 
-mean_acc = np.mean(all_accuracy)
-mean_auroc = np.mean(all_auroc)
+    mean_acc = np.mean(all_accuracy)
+    mean_auroc = np.mean(all_auroc)
 
-print("Raw Top-1 Accuracy: {}".format(all_accuracy))
-print("Raw AUROC: {}".format(all_auroc))
-print("Average Top-1 Accuracy: {}".format(mean_acc))
-print("Average AUROC: {}".format(mean_auroc))
+    print("Raw Top-1 Accuracy: {}".format(all_accuracy))
+    print("Raw AUROC: {}".format(all_auroc))
+    print("Average Top-1 Accuracy: {}".format(mean_acc))
+    print("Average AUROC: {}".format(mean_auroc))
+
+
+if __name__ == "__main__":
+    test()
