@@ -30,11 +30,11 @@ def get_standardized_max_logits(logits):
     mean_logits = torch.mean(logits)
     std_dev_logits = torch.std(logits)
     standardized_logits = (logits - mean_logits) / std_dev_logits
-    return torch.max(standardized_logits, dim=1)
+    return standardized_logits
 
 
 def get_max_logits(logits):
-    return torch.max(logits, dim=1)
+    return torch.argmax(logits, dim=1)
 
 
 def get_softmax_prob(logits):
@@ -42,7 +42,7 @@ def get_softmax_prob(logits):
     return loss
 
 
-def get_accuracy(x, gt):
+def get_accuracy(x, gt, use_mls, use_stmls):
     predicted = np.argmax(x, axis=1)
     total = len(gt)
     acc = np.sum(predicted == gt) / total
