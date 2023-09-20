@@ -8,19 +8,17 @@ from models.vgg import VGG
 from utils import *
 
 dataset_name = "CIFAR10"
-trial = 0
-best_acc = 0
-start_epoch = 0
 checkpoint_dir = f"checkpoint/{dataset_name}"
 
 with open("datasets/config.json") as config_file:
     config = json.load(config_file)[dataset_name]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(device)
 
-trainloader, valloader, testloader, mapping = get_train_loaders(
-    dataset_name, trial, config
-)
+# train_loader, val_loader, test_loader, mapping = get_train_loaders(
+#     dataset_name, trial, config
+# )
 # parameters useful when resuming and finetuning
 
 print("Building model...")
@@ -40,47 +38,32 @@ optimizer = optim.SGD(
 
 
 # Training
-def train(epoch):
+def train(epoch, train_loader, mapping):
     print("\nEpoch: %d" % epoch)
     net.train()
     train_loss = 0
     correct = 0
     total = 0
 
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
+    for batch_idx, (inputs, targets) in enumerate(train_loader):
         inputs = inputs.to(device)
         # convert from original dataset label to known class label
-
         targets = (
             torch.Tensor([mapping[x] for x in targets]).long().to(device)
         )  # Mapping takes only the known classes labels as targets
-
         optimizer.zero_grad()
-
         outputs = net(inputs)  # Outputs are the logits here
-
-        # if use_max_logits:
-        #     max_logit, _ = get_max_logits(outputs)
-        # elif use_std_max_logits:
-        #     std_max_logits, _ = get_standardized_max_logits(outputs)
-        #     loss = custom_loss(std_max_logits, targets)
-        # else:
         loss = criterion(outputs, targets)
-
         loss.backward()
-
         optimizer.step()
-
         train_loss += loss.item()
-
         _, predicted = outputs.max(1)
-
         total += targets.size(0)
         correct += predicted.eq(targets).sum().item()
 
         progress_bar(
             batch_idx,
-            len(trainloader),
+            len(train_loader),
             "Loss: %.3f | Acc: %.3f%% (%d/%d)"
             % (
                 train_loss / (batch_idx + 1),
@@ -91,29 +74,25 @@ def train(epoch):
         )
 
 
-def val(epoch):
-    global best_acc
+def val(epoch, val_loader, mapping, trial_num):
+    best_acc = 0
     net.eval()
     val_loss = 0
     correct = 0
     total = 0
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(valloader):
+        for batch_idx, (inputs, targets) in enumerate(val_loader):
             inputs = inputs.to(device)
             targets = torch.Tensor([mapping[x] for x in targets]).long().to(device)
             outputs = net(inputs)
-
             loss = criterion(outputs, targets)
             val_loss += loss.item()
             _, predicted = outputs.max(1)
-
             total += targets.size(0)
-
             correct += predicted.eq(targets).sum().item()
-
             progress_bar(
                 batch_idx,
-                len(testloader),
+                len(test_loader),
                 "Loss: %.3f | Acc: %.3f%% (%d/%d)"
                 % (
                     val_loss / (batch_idx + 1),
@@ -133,13 +112,21 @@ def val(epoch):
             "epoch": epoch,
         }
         if not os.path.isdir(checkpoint_dir):
-            os.mkdir(checkpoint_dir)
-        torch.save(state, f"{checkpoint_dir}/{trial}_ckpt.pth")
+            os.makedirs(checkpoint_dir)
+        torch.save(state, f"{checkpoint_dir}/trial_{trial_num}_ckpt.pth")
         best_acc = acc
 
 
 if __name__ == "__main__":
-    max_epoch = config["openset_training"]["max_epoch"][0] + start_epoch
-    for epoch in range(start_epoch, max_epoch):
-        train(epoch)
-        val(epoch)
+    start_epoch = 0
+    max_epoch = config["openset_training"]["max_epoch"][1] + start_epoch
+    # max_epoch = 3
+
+    for i in range(5):
+        train_loader, val_loader, test_loader, mapping = get_train_loaders(
+            dataset_name, trial_num=i, config=config
+        )
+        print(f"Training {dataset_name} dataset for {i}th trial")
+        for epoch in range(start_epoch, max_epoch):
+            train(epoch, train_loader=train_loader, mapping=mapping)
+            val(epoch, val_loader=val_loader, mapping=mapping, trial_num=i)
