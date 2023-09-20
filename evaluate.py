@@ -9,18 +9,14 @@ from datasets.dataloaders import get_eval_loaders
 from models.vgg import VGG
 from utils import *
 
-start_trial = 0
-num_trials = 1
-dataset_name = "CIFAR10"
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
 
-def test():
+def test(trial_num, num_trials, dataset_name, use_mls=False, use_stmls=False):
     all_accuracy = []
     all_auroc = []
-    for trial in range(start_trial, start_trial + num_trials):
+    for trial in range(trial_num, trial_num + num_trials):
         with open("./datasets/config.json") as f:
             config = json.load(f)[dataset_name]
 
@@ -29,7 +25,7 @@ def test():
         )
         net = VGG("VGG19", n_classes=4)
         checkpoint = torch.load(
-            f"checkpoint/{dataset_name}/{trial}_ckpt.pth",
+            f"checkpoint/{dataset_name}/trial_{trial}_ckpt.pth",
             map_location=torch.device(device),
         )
         # map_location = torch.device("cpu")
@@ -44,6 +40,7 @@ def test():
         net.eval()
 
         X = []
+        X_roc = []
         y = []
 
         softmax = torch.nn.Softmax(dim=1)
@@ -54,15 +51,24 @@ def test():
 
                 images = images.to(device)
                 logits = net(images)
-                scores = softmax(logits)
+                if use_mls:
+                    scores = torch.argmax(logits, dim=1)
+                elif use_stmls:
+                    std_logits = get_standardized_max_logits(logits=logits)
+                    scores = torch.argmax(std_logits)
+                else:
+                    scores = softmax(logits)
 
-                X += scores.cpu().detach().tolist()
+                if use_mls or use_stmls:
+                    X += logits.cpu().detach().tolist()
+                else:
+                    X += scores.cpu().detach().tolist()
                 y += targets.cpu().tolist()
 
             X = np.asarray(X)
             y = np.asarray(y)
 
-            accuracy = get_accuracy(X, y)
+            accuracy = get_accuracy(X, y, use_mls, use_stmls)
             all_accuracy += [accuracy]
 
         Xu = []
@@ -72,8 +78,19 @@ def test():
 
                 images = images.to(device)
                 logits = net(images)
-                scores = softmax(logits)
-                Xu += scores.cpu().detach().tolist()
+                if use_mls:
+                    scores = torch.argmax(logits, dim=1)
+                elif use_stmls:
+                    std_logits = get_standardized_max_logits(logits=logits)
+                    scores = torch.argmax(std_logits)
+                else:
+                    scores = softmax(logits)
+
+                if use_mls or use_stmls:  # Use logits for mls or stmls
+                    Xu += logits.cpu().detach().tolist()
+                else:
+                    Xu += scores.cpu().detach().tolist()
+
             Xu = np.asarray(Xu)
 
             auroc = get_auroc(X, Xu)
@@ -89,4 +106,9 @@ def test():
 
 
 if __name__ == "__main__":
-    test()
+    # trial_num = 0
+    num_trials = 1
+    dataset_name = "CIFAR10"
+
+    # for i in range(5):
+    test(trial_num=0, num_trials=num_trials, dataset_name=dataset_name, use_stmls=True)
