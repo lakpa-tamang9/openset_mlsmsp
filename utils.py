@@ -49,14 +49,10 @@ def get_accuracy(x, gt, use_mls, use_stmls):
     return acc
 
 
-def get_auroc(inData, outData, in_low=True):
-    inDataMin = np.min(inData, 1)
-    outDataMin = np.min(outData, 1)
-
-    y_hat = np.concatenate((inDataMin, outDataMin))
-    y_true = np.concatenate((np.zeros(len(inDataMin)), np.ones(len(outDataMin))))
-    fpr, tpr, thresholds = sklearn.metrics.roc_curve(y_true, y_hat, pos_label=in_low)
-
+def calculate_auroc(known_class_logits, unknown_class_logits):
+    y_true = [1] * len(known_class_logits) + [0] * len(unknown_class_logits)
+    y_hat = known_class_logits + unknown_class_logits
+    fpr, tpr, thresholds = sklearn.metrics.roc_curve(y_true, y_hat, pos_label=1)
     return sklearn.metrics.auc(fpr, tpr)
 
 
