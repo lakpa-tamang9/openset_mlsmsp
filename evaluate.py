@@ -13,102 +13,143 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
 
-def test(trial_num, num_trials, dataset_name, use_mls=False, use_stmls=False):
+def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
     all_accuracy = []
-    all_auroc = []
-    for trial in range(trial_num, trial_num + num_trials):
-        with open("./datasets/config.json") as f:
-            config = json.load(f)[dataset_name]
+    with open("./datasets/config.json") as f:
+        config = json.load(f)[dataset_name]
 
-        known_loader, unknown_loader, mapping = get_eval_loaders(
-            dataset_name, trial, config
-        )
-        net = VGG("VGG19", n_classes=4)
-        checkpoint = torch.load(
-            f"checkpoint/{dataset_name}/trial_{trial}_ckpt.pth",
-            map_location=torch.device(device),
-        )
-        # map_location = torch.device("cpu")
+    known_loader, unknown_loader, mapping = get_eval_loaders(
+        dataset_name, trial_num, config
+    )
+    net = VGG("VGG19", n_classes=4)
+    checkpoint = torch.load(
+        f"checkpoint/{dataset_name}/{trial_num}_ckpt.pth",
+        map_location=torch.device(device),
+    )
+    # map_location = torch.device("cpu")
 
-        net = net.to(device)
-        print("test")
+    net = net.to(device)
+    net_dict = net.state_dict()
+    pretrained_dict = {k: v for k, v in checkpoint["net"].items() if k in net_dict}
 
-        net_dict = net.state_dict()
-        pretrained_dict = {k: v for k, v in checkpoint["net"].items() if k in net_dict}
+    net.load_state_dict(pretrained_dict)
+    net.eval()
 
-        net.load_state_dict(pretrained_dict)
-        net.eval()
+    X = []
+    y = []
+    known_max_logits = []
+    known_std_max_logits = []
 
-        X = []
-        X_roc = []
-        y = []
+    softmax = torch.nn.Softmax(dim=1)
+    with torch.no_grad():
+        for _, data in enumerate(known_loader):
+            images, labels = data
+            targets = torch.Tensor([mapping[x] for x in labels]).long().to(device)
 
-        softmax = torch.nn.Softmax(dim=1)
-        with torch.no_grad():
-            for i, data in enumerate(known_loader):
-                images, labels = data
-                targets = torch.Tensor([mapping[x] for x in labels]).long().to(device)
+            images = images.to(device)
+            logits = net(images)
 
-                images = images.to(device)
-                logits = net(images)
-                if use_mls:
-                    scores = torch.argmax(logits, dim=1)
-                elif use_stmls:
-                    std_logits = get_standardized_max_logits(logits=logits)
-                    scores = torch.argmax(std_logits)
-                else:
-                    scores = softmax(logits)
+            if use_mls:
+                known_max_logit, _ = torch.max(logits, dim=1)
+                pred_labels = torch.argmax(logits, dim=1)
+            elif use_stmls:
+                logits = get_standardized_max_logits(logits=logits)
+                pred_labels = torch.argmax(logits)
+                known_std_max_logit, _ = torch.max(logits, dim=1)
+            else:
+                pred_labels = softmax(logits)
 
-                if use_mls or use_stmls:
-                    X += logits.cpu().detach().tolist()
-                else:
-                    X += scores.cpu().detach().tolist()
-                y += targets.cpu().tolist()
+            if use_mls or use_stmls:
+                X += logits.cpu().detach().tolist()
+            else:
+                X += pred_labels.cpu().detach().tolist()
 
-            X = np.asarray(X)
-            y = np.asarray(y)
+            y += targets.cpu().tolist()
 
-            accuracy = get_accuracy(X, y, use_mls, use_stmls)
-            all_accuracy += [accuracy]
+            if use_mls:
+                known_max_logits += known_max_logit
+            elif use_stmls:
+                known_std_max_logits += known_std_max_logit
 
-        Xu = []
-        with torch.no_grad():
-            for i, data in enumerate(unknown_loader):
-                images, labels = data
+        # Extract items from the list of tensors
+        if use_mls:
+            known_max_logits = [t.item() for t in known_max_logits]
+        elif use_stmls:
+            known_std_max_logits = [t.item() for t in known_std_max_logits]
 
-                images = images.to(device)
-                logits = net(images)
-                if use_mls:
-                    scores = torch.argmax(logits, dim=1)
-                elif use_stmls:
-                    std_logits = get_standardized_max_logits(logits=logits)
-                    scores = torch.argmax(std_logits)
-                else:
-                    scores = softmax(logits)
+        X = np.asarray(X)
+        y = np.asarray(y)
 
-                if use_mls or use_stmls:  # Use logits for mls or stmls
-                    Xu += logits.cpu().detach().tolist()
-                else:
-                    Xu += scores.cpu().detach().tolist()
+        accuracy = get_accuracy(X, y, use_mls, use_stmls)
+        all_accuracy += [accuracy]
 
-            Xu = np.asarray(Xu)
+    Xu = []
+    unknown_max_logits = []
+    with torch.no_grad():
+        for _, data in enumerate(unknown_loader):
+            images, labels = data
 
-            auroc = get_auroc(X, Xu)
-            all_auroc += [auroc]
+            images = images.to(device)
+            logits = net(images)
+            if use_mls:
+                unknown_max_logit, _ = torch.max(logits, dim=1)
+                pred_labels = torch.argmax(logits, dim=1)
+
+            elif use_stmls:
+                logits = get_standardized_max_logits(logits=logits)
+                pred_labels = torch.argmax(logits)
+                unknown_std_max_logit, _ = torch.max(logits, dim=1)
+
+            else:
+                pred_labels = softmax(logits)
+
+            if use_mls:
+                unknown_max_logits += unknown_max_logit
+            elif use_stmls:
+                unknown_std_max_logits += unknown_std_max_logit
+
+            Xu += pred_labels.cpu().detach().tolist()
+
+        if use_mls:
+            unknown_max_logits = [t.item() for t in unknown_max_logits]
+        elif use_stmls:
+            unknown_std_max_logits = [t.item() for t in unknown_std_max_logits]
+
+        Xu = np.asarray(Xu)
+
+        if use_mls:
+            known_class_logits = known_max_logits
+            unknown_class_logits = unknown_max_logits
+
+        elif use_stmls:
+            known_class_logits = known_std_max_logits
+            unknown_class_logits = unknown_std_max_logits
+
+        else:
+            known_class_logits = X
+            unknown_class_logits = Xu
+
+        auc = calculate_auroc(known_class_logits, unknown_class_logits)
 
     mean_acc = np.mean(all_accuracy)
-    mean_auroc = np.mean(all_auroc)
+    mean_auc = np.mean(auc)
 
-    print("Raw Top-1 Accuracy: {}".format(all_accuracy))
-    print("Raw AUROC: {}".format(all_auroc))
-    print("Average Top-1 Accuracy: {}".format(mean_acc))
-    print("Average AUROC: {}".format(mean_auroc))
+    return mean_acc, mean_auc
 
 
 if __name__ == "__main__":
-    # trial_num = 0
-    num_trials = 1
     dataset_name = "CIFAR10"
-
-    # for i in range(5):
-    test(trial_num=0, num_trials=num_trials, dataset_name=dataset_name, use_stmls=True)
+    eval_dict = {}
+    trials = []
+    for i in range(5):
+        print("Testing for Trial {}".format(i))
+        accuracy, auc = test(
+            trial_num=i,
+            dataset_name=dataset_name,
+            use_mls=True,
+        )
+        trials.append([accuracy, auc])
+    eval_dict[f"{dataset_name}"] = trials
+    print(eval_dict)
+    with open("./eval_dict.json", "w") as f:
+        json.dump(eval_dict, f)
