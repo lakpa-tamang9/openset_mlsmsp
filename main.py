@@ -113,13 +113,13 @@ def val(epoch, val_loader, mapping, trial_num):
         }
         if not os.path.isdir(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-        torch.save(state, f"{checkpoint_dir}/trial_{trial_num}_ckpt.pth")
+        torch.save(state, f"{checkpoint_dir}/{trial_num}_ckpt.pth")
         best_acc = acc
 
 
 if __name__ == "__main__":
     start_epoch = 0
-    max_epoch = config["openset_training"]["max_epoch"][1] + start_epoch
+    max_epoch = config["openset_training"]["max_epoch"][0] + start_epoch
     # max_epoch = 3
 
     for i in range(5):
