@@ -1,9 +1,5 @@
 """
-    Helper functions for training and evaluation.
-
-    progress_bar and format_time function was taken from https://github.com/kuangliu/pytorch-cifar which mimics xlua.progress
-
-    Dimity Miller, 2020
+progress_bar and format_time function was taken from https://github.com/kuangliu/pytorch-cifar which mimics xlua.progress
 """
 
 import os
