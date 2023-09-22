@@ -8,28 +8,33 @@ random.seed(1000)
 
 
 def save_trainval_split(dataset, train_idxs, val_idxs):
+    global test_idxs
     print("Saving {} Train/Val split to {}/trainval_idxs.json".format(dataset, dataset))
     CWD = os.getcwd()
+    if dataset == "TinyImageNet":
+        split_data = {"Train": train_idxs, "Val": val_idxs, "Test": test_idxs}
+    else:
+        split_data = {"Train": train_idxs, "Val": val_idxs}
     with open(f"{CWD}/datasets/{dataset}/trainval_idxs.json", "w") as f:
-        json.dump({"Train": train_idxs, "Val": val_idxs}, f)
+        json.dump(split_data, f)
 
 
 mnist = torchvision.datasets.MNIST("datasets/data", download=True)
 # svhn = torchvision.datasets.SVHN("data")
 cifar10 = torchvision.datasets.CIFAR10("datasets/data", download=False)
-# tinyImagenet = torchvision.datasets.ImageFolder("data/tiny-imagenet-200/train")
+tinyImagenet = torchvision.datasets.ImageFolder("datasets/data/tiny-imagenet-200/train")
 
 datasets = {
-    "MNIST": mnist,
+    # "MNIST": mnist,
     # "SVHN": svhn,
-    "CIFAR10": cifar10,
-    # "TinyImageNet": tinyImagenet,
+    # "CIFAR10": cifar10,
+    "TinyImageNet": tinyImagenet,
 }
-# split = {"MNIST": 0.8, "SVHN": 0.8, "CIFAR10": 0.8, "TinyImageNet": 0.9}
-split = {
-    "MNIST": 0.8,
-    "CIFAR10": 0.8,
-}
+split = {"MNIST": 0.8, "SVHN": 0.8, "CIFAR10": 0.8, "TinyImageNet": 0.7}
+# split = {
+#     "MNIST": 0.8,
+#     "CIFAR10": 0.8,
+# }
 
 for datasetName in datasets.keys():
     dataset = datasets[datasetName]
@@ -50,14 +55,30 @@ for datasetName in datasets.keys():
     # determine size of train subset
     class_size = [len(x) for x in class_idxs]
     class_train_size = [int(split[datasetName] * x) for x in class_size]
+    if (
+        datasetName == "TinyImageNet"
+    ):  # Separate 0.7 for train, 0.2 for val and 0.1 for test from the Train directory itself.
+        class_val_size = [int(0.2 * x) for x in class_size]
+        class_test_size = [int(0.1 * x) for x in class_size]
 
     # subset per class into train and val subsets randomly
     train_idxs = {}
     val_idxs = {}
+    test_idxs = {}
     for class_num in range(num_classes):
         train_size = class_train_size[class_num]
         idxs = class_idxs[class_num]
         random.shuffle(idxs)
+        if datasetName == "TinyImageNet":
+            val_size = class_val_size[class_num]
+            test_size = class_test_size[class_num]
+
+            train_idxs[class_num] = idxs[:train_size]
+            val_idxs[class_num] = idxs[train_size : train_size + val_size]
+            test_idxs[class_num] = idxs[
+                train_size + val_size : train_size + val_size + test_size
+            ]
+
         train_idxs[class_num] = idxs[:train_size]
         val_idxs[class_num] = idxs[train_size:]
 
