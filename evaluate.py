@@ -2,6 +2,7 @@ import json
 
 import numpy as np
 import torch
+import os
 
 torch.cuda.empty_cache()
 
@@ -39,6 +40,7 @@ def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
     y = []
     known_max_logits = []
     known_std_max_logits = []
+    known_max_softmax_probs = []
 
     softmax = torch.nn.Softmax(dim=1)
     with torch.no_grad():
@@ -54,10 +56,11 @@ def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
                 pred_labels = torch.argmax(logits, dim=1)
             elif use_stmls:
                 logits = get_standardized_max_logits(logits=logits)
-                pred_labels = torch.argmax(logits)
+                pred_labels = torch.argmax(logits, dim=1)
                 known_std_max_logit, _ = torch.max(logits, dim=1)
             else:
                 pred_labels = softmax(logits)
+                max_confidence, _ = torch.max(pred_labels, dim=1)
 
             if use_mls or use_stmls:
                 X += logits.cpu().detach().tolist()
@@ -70,12 +73,16 @@ def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
                 known_max_logits += known_max_logit
             elif use_stmls:
                 known_std_max_logits += known_std_max_logit
+            else:
+                known_max_softmax_probs += max_confidence
 
         # Extract items from the list of tensors
         if use_mls:
             known_max_logits = [t.item() for t in known_max_logits]
         elif use_stmls:
             known_std_max_logits = [t.item() for t in known_std_max_logits]
+        else:
+            known_max_softmax_probs = [t.item() for t in known_max_softmax_probs]
 
         X = np.asarray(X)
         y = np.asarray(y)
@@ -83,8 +90,9 @@ def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
         accuracy = get_accuracy(X, y, use_mls, use_stmls)
         all_accuracy += [accuracy]
 
-    Xu = []
     unknown_max_logits = []
+    unknown_std_max_logits = []
+    unknown_max_softmax_probs = []
     with torch.no_grad():
         for _, data in enumerate(unknown_loader):
             images, labels = data
@@ -102,20 +110,21 @@ def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
 
             else:
                 pred_labels = softmax(logits)
+                max_confidence, _ = torch.max(pred_labels, dim=1)
 
             if use_mls:
                 unknown_max_logits += unknown_max_logit
             elif use_stmls:
                 unknown_std_max_logits += unknown_std_max_logit
-
-            Xu += pred_labels.cpu().detach().tolist()
+            else:
+                unknown_max_softmax_probs += max_confidence
 
         if use_mls:
             unknown_max_logits = [t.item() for t in unknown_max_logits]
         elif use_stmls:
             unknown_std_max_logits = [t.item() for t in unknown_std_max_logits]
-
-        Xu = np.asarray(Xu)
+        else:
+            unknown_max_softmax_probs = [t.item() for t in unknown_max_softmax_probs]
 
         if use_mls:
             known_class_logits = known_max_logits
@@ -126,8 +135,8 @@ def test(trial_num, dataset_name, use_mls=False, use_stmls=False):
             unknown_class_logits = unknown_std_max_logits
 
         else:
-            known_class_logits = X
-            unknown_class_logits = Xu
+            known_class_logits = known_max_softmax_probs
+            unknown_class_logits = unknown_max_softmax_probs
 
         auc = calculate_auroc(known_class_logits, unknown_class_logits)
 
@@ -151,5 +160,9 @@ if __name__ == "__main__":
         trials.append([accuracy, auc])
     eval_dict[f"{dataset_name}"] = trials
     print(eval_dict)
-    with open("./eval_dict.json", "w") as f:
+    output_dir = "outputs"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    with open(f"{output_dir}/eval_dict_mls.json", "w") as f:
         json.dump(eval_dict, f)
