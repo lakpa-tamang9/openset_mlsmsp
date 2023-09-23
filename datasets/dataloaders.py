@@ -29,6 +29,10 @@ def get_train_loaders(dataset_name, trial_num, config):
         train_val_idxs = json.load(f)
         train_idxs = train_val_idxs["Train"]
         val_idxs = train_val_idxs["Val"]
+        if dataset_name == "TinyImageNet":
+            test_idxs = train_val_idxs["Test"]
+        else:
+            test_idxs = None
 
     # Open and set the known and unknwon class indices
     with open(f"datasets/{dataset_name}/splits/spl_{trial_num}.json") as f:
@@ -38,7 +42,7 @@ def get_train_loaders(dataset_name, trial_num, config):
     # Create train, val and test subsets for the known classes using the indices loaded above.
     train_subset = create_data_subsets(train_set, known_classes, train_idxs)
     val_subset = create_data_subsets(val_set, known_classes, val_idxs)
-    known_subset = create_data_subsets(test_set, known_classes)
+    known_subset = create_data_subsets(test_set, known_classes, test_idxs)
 
     # create a mapping from dataset target class number to network known class number
     mapping = create_target_map(known_classes, config["num_classes"])
@@ -232,22 +236,22 @@ def load_and_transform(dataset_name, config, trial_num):
                 download=True,
             )
     elif dataset_name == "SVHN":
-        train_set = SVHN(
+        transformed_train = SVHN(
             "datasets/data", transform=data_transforms["train"], download=True
         )
-        val_set = SVHN("datasets/data", transform=data_transforms["val"])
-        test_set = SVHN(
+        transformed_val = SVHN("datasets/data", transform=data_transforms["val"])
+        transformed_test = SVHN(
             "datasets/data", split="test", transform=data_transforms["test"]
         )
     elif dataset_name == "TinyImageNet":
-        train_set = ImageFolder(
+        transformed_train = ImageFolder(
             "datasets/data/tiny-imagenet-200/train", transform=data_transforms["train"]
         )
-        val_set = ImageFolder(
+        transformed_val = ImageFolder(
             "datasets/data/tiny-imagenet-200/train", transform=data_transforms["val"]
         )
-        test_set = ImageFolder(
-            "datasets/data/tiny-imagenet-200/val", transform=data_transforms["test"]
+        transformed_test = ImageFolder(
+            "datasets/data/tiny-imagenet-200/test", transform=data_transforms["test"]
         )
     else:
         print("Sorry, that dataset has not been implemented.")
