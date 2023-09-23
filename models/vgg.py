@@ -51,12 +51,25 @@ cfg = {
     ],
 }
 
+"""
+Image sizes:
+Tiny Imagenet: 64 x 64
+CIFAR 10: 32 x 32
+MNIST : 28 x 28
+svhn: 32 x 32 
+"""
+
 
 class VGG(nn.Module):
-    def __init__(self, vgg_name, n_classes):
+    def __init__(self, vgg_name, n_classes, img_size):
         super(VGG, self).__init__()
         self.features = self._make_layers(cfg[vgg_name])
-        self.fc = nn.Linear(512, n_classes)
+        if img_size == 32:  # For cifar and svhn
+            self.fc = nn.Linear(512, n_classes)
+        elif img_size == 64:  # For tinyimagenet
+            self.fc = nn.Linear(2048, n_classes)
+        elif img_size == 28:  # For mnist
+            self.fc = nn.Linear(256, n_classes)
 
     def forward(self, x):
         out = self.features(x)
