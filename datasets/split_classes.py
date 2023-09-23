@@ -24,6 +24,6 @@ def save_splits(dataset_name, num_knowns, total_class_num):
             json.dump(dump_data, f)
 
 
-if __name__ == "__main__":
-    save_splits("TinyImageNet", num_knowns=20, total_class_num=200)
-    print("Class split complete and saved to respective directory!")
+# if __name__ == "__main__":
+#     save_splits("TinyImageNet", num_knowns=20, total_class_num=200)
+#     print("Class split complete and saved to respective directory!")
