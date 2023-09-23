@@ -7,7 +7,13 @@ from datasets.dataloaders import *
 from models.vgg import VGG
 from utils import *
 
-dataset_name = "CIFAR10"
+dataset_details = {
+    "MNIST": [4, 28],
+    "CIFAR10": [4, 32],
+    "SVHN": [4, 32],
+    "TinyImageNet": [20, 64],
+}  # {Dataset name: [Total known classes to use, Image size]}
+dataset_name = "TinyImageNet"
 checkpoint_dir = f"checkpoint/{dataset_name}"
 
 with open("datasets/config.json") as config_file:
@@ -15,14 +21,12 @@ with open("datasets/config.json") as config_file:
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
-
-# train_loader, val_loader, test_loader, mapping = get_train_loaders(
-#     dataset_name, trial, config
-# )
-# parameters useful when resuming and finetuning
-
 print("Building model...")
-net = VGG("VGG19", n_classes=4)
+net = VGG(
+    "VGG19",
+    n_classes=dataset_details["TinyImageNet"][0],
+    img_size=dataset_details["TinyImageNet"][1],
+)
 
 # Move the model to GPU if available
 net.to(device)
